@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using UnityEditor.Experimental.GraphView;
 using UnityEngine;
 
 namespace XNode {
@@ -34,8 +35,9 @@ namespace XNode {
             if (formerlySerializedAsCache != null) formerlySerializedAsCache.TryGetValue(nodeType, out formerlySerializedAs);
 
             Dictionary<string, NodePort> staticPorts;
-            if (!portDataCache.TryGetValue(nodeType, out staticPorts)) {
-				staticPorts = new Dictionary<string, NodePort>();
+            if (!portDataCache.TryGetValue(nodeType, out staticPorts))
+            {
+                staticPorts = new Dictionary<string, NodePort>();
             }
 
             // Cleanup port dict - Remove nonexisting static ports - update static port types
@@ -278,38 +280,15 @@ namespace XNode {
 						Debug.LogError( "This Node type does not support properties as ports. Is this type serialized by Odin and includes the ShowOdinSerializedPropertiesInInspector attribute?" );
 					}
 					else {
-						if ( !portDataCache.ContainsKey( nodeType ) ) portDataCache.Add( nodeType, new List<NodePort>() );
-						portDataCache[nodeType].Add( new NodePort( propertyInfo[i] ) );
+						if ( !portDataCache.ContainsKey( nodeType ) ) portDataCache.Add( nodeType, new Dictionary<string, NodePort>() );
+                        NodePort port = new NodePort(fieldInfo[i]);
+                        portDataCache[nodeType].Add(port.fieldName, port);
 					}
 				}
 			}
 #endif
 		}
 
-        private class PortDataCache : Dictionary<System.Type, List<NodePort>>, ISerializationCallbackReceiver {
-            [SerializeField] private List<System.Type> keys = new List<System.Type>();
-            [SerializeField] private List<List<NodePort>> values = new List<List<NodePort>>();
-
-            // save the dictionary to lists
-            public void OnBeforeSerialize() {
-                keys.Clear();
-                values.Clear();
-                foreach (var pair in this) {
-                    keys.Add(pair.Key);
-                    values.Add(pair.Value);
-                }
-            }
-
-            // load dictionary from lists
-            public void OnAfterDeserialize() {
-                this.Clear();
-
-                if (keys.Count != values.Count)
-                    throw new System.Exception(string.Format("there are {0} keys and {1} values after deserialization. Make sure that both key and value types are serializable.", keys.Count, values.Count));
-
-                for (int i = 0; i < keys.Count; i++)
-                    this.Add(keys[i], values[i]);
-            }
-        }
+        private class PortDataCache : Dictionary<System.Type, Dictionary<string, NodePort>> { }
     }
 }
