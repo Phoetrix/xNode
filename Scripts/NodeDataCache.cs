@@ -8,13 +8,24 @@ namespace XNode {
     public static class NodeDataCache {
         private static PortDataCache portDataCache;
         private static Dictionary<System.Type, Dictionary<string, string>> formerlySerializedAsCache;
+        private static Dictionary<System.Type, string> typeQualifiedNameCache;
         private static bool Initialized { get { return portDataCache != null; } }
+
+        public static string GetTypeQualifiedName(System.Type type) {
+            if(typeQualifiedNameCache == null) typeQualifiedNameCache = new Dictionary<System.Type, string>();
+            
+            string name;
+            if (!typeQualifiedNameCache.TryGetValue(type, out name)) {
+                name = type.AssemblyQualifiedName;
+                typeQualifiedNameCache.Add(type, name);
+            }
+            return name;
+        }
 
         /// <summary> Update static ports and dynamic ports managed by DynamicPortLists to reflect class fields. </summary>
         public static void UpdatePorts(Node node, Dictionary<string, NodePort> ports) {
             if (!Initialized) BuildCache();
 
-            Dictionary<string, NodePort> staticPorts = new Dictionary<string, NodePort>();
             Dictionary<string, List<NodePort>> removedPorts = new Dictionary<string, List<NodePort>>();
             System.Type nodeType = node.GetType();
 
@@ -23,17 +34,15 @@ namespace XNode {
 
             List<NodePort> dynamicListPorts = new List<NodePort>();
 
-            List<NodePort> typePortCache;
-            if (portDataCache.TryGetValue(nodeType, out typePortCache)) {
-                for (int i = 0; i < typePortCache.Count; i++) {
-                    staticPorts.Add(typePortCache[i].fieldName, portDataCache[nodeType][i]);
-                }
-            }
+            Dictionary<string, NodePort> staticPorts;
+            if (!portDataCache.TryGetValue(nodeType, out staticPorts)) {
+                 staticPorts = new Dictionary<string, NodePort>();
+            }            
 
             // Cleanup port dict - Remove nonexisting static ports - update static port types
             // AND update dynamic ports (albeit only those in lists) too, in order to enforce proper serialisation.
             // Loop through current node ports
-            foreach (NodePort port in ports.Values.ToList()) {
+            foreach (NodePort port in ports.Values.ToArray()) {
                 // If port still exists, check it it has been changed
                 NodePort staticPort;
                 if (staticPorts.TryGetValue(port.fieldName, out staticPort)) {
@@ -84,7 +93,7 @@ namespace XNode {
             foreach (NodePort listPort in dynamicListPorts) {
                 // At this point we know that ports here are dynamic list ports
                 // which have passed name/"backing port" checks, ergo we can proceed more safely.
-                string backingPortName = listPort.fieldName.Split(' ')[0];
+                string backingPortName = listPort.fieldName.Substring(0, listPort.fieldName.IndexOf(' '));
                 NodePort backingPort = staticPorts[backingPortName];
 
                 // Update port constraints. Creating a new port instead will break the editor, mandating the need for setters.
@@ -147,6 +156,7 @@ namespace XNode {
                     // The following assemblies, and sub-assemblies (eg. UnityEngine.UI) are skipped
                     case "UnityEditor":
                     case "UnityEngine":
+                    case "Unity":
                     case "System":
                     case "mscorlib":
                     case "Microsoft":
@@ -219,8 +229,9 @@ namespace XNode {
 
                 if (inputAttrib != null && outputAttrib != null) Debug.LogError("Field " + fieldInfo[i].Name + " of type " + nodeType.FullName + " cannot be both input and output.");
                 else {
-                    if (!portDataCache.ContainsKey(nodeType)) portDataCache.Add(nodeType, new List<NodePort>());
-                    portDataCache[nodeType].Add(new NodePort(fieldInfo[i]));
+                    if (!portDataCache.ContainsKey(nodeType)) portDataCache.Add(nodeType, new Dictionary<string, NodePort>());
+                     NodePort port = new NodePort(fieldInfo[i]);
+                     portDataCache[nodeType].Add(port.fieldName, port);
                 }
 
                 if (formerlySerializedAsAttribute != null) {
